@@ -94,9 +94,9 @@ output_text() {
     
     # Цвет в зависимости от использования
     local usage_color=$GREEN
-    if [ "$disk_usage" -gt 80 ]; then
+    if [ "$(awk "BEGIN {print ($disk_usage > 80) ? 1 : 0}")" -eq 1 ]; then
         usage_color=$RED
-    elif [ "$disk_usage" -gt 60 ]; then
+    elif [ "$(awk "BEGIN {print ($disk_usage > 60) ? 1 : 0}")" -eq 1 ]; then
         usage_color=$YELLOW
     fi
     
@@ -129,9 +129,9 @@ output_text() {
     
     # Цвет в зависимости от использования RAM
     local ram_usage_color=$GREEN
-    if [ "$ram_usage_percent" -gt 80 ]; then
+    if [ "$(awk "BEGIN {print ($ram_usage_percent > 80) ? 1 : 0}")" -eq 1 ]; then
         ram_usage_color=$RED
-    elif [ "$ram_usage_percent" -gt 60 ]; then
+    elif [ "$(awk "BEGIN {print ($ram_usage_percent > 60) ? 1 : 0}")" -eq 1 ]; then
         ram_usage_color=$YELLOW
     fi
     
