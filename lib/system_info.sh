@@ -108,7 +108,8 @@ get_ram_info() {
 				usage_percent=$(awk "BEGIN {printf \"%.1f\", $mem_used * 100 / $mem_total}")
 			fi
 			
-			local free_gb=$((mem_total - mem_used))
+			# Используем awk для вычисления free_gb чтобы избежать проблем с дробными числами
+			local free_gb=$(awk "BEGIN {printf \"%.0f\", $mem_total - $mem_used}")
 			echo "{\"total\":\"${mem_total}Gi\",\"used\":\"${mem_used}Gi\",\"free\":\"${free_gb}Gi\",\"usage_percent\":$usage_percent}"
 			return 0
 		fi

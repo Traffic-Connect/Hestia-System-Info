@@ -81,7 +81,7 @@ output_text() {
     
     # Прогресс-бар для использования диска
     local bar_length=20
-    local filled=$((disk_usage * bar_length / 100))
+    local filled=$(awk "BEGIN {printf \"%.0f\", $disk_usage * $bar_length / 100}" 2>/dev/null || echo "0")
     local empty=$((bar_length - filled))
     
     local progress_bar=""
@@ -116,7 +116,7 @@ output_text() {
     
     # Прогресс-бар для использования RAM
     local ram_bar_length=20
-    local ram_filled=$((ram_usage_percent * ram_bar_length / 100))
+    local ram_filled=$(awk "BEGIN {printf \"%.0f\", $ram_usage_percent * $ram_bar_length / 100}" 2>/dev/null || echo "0")
     local ram_empty=$((ram_bar_length - ram_filled))
     
     local ram_progress_bar=""
