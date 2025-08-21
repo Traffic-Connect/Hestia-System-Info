@@ -1,0 +1,218 @@
+#!/bin/bash
+#
+# Custom Hestia command: v-system-info
+# Returns system information including CPU model, disk usage, RAM, backup status, and root folders
+#
+# Usage: ./v-system-info [--json|--text]
+#
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Load shared library if available
+LIB_DIR="$(cd "$(dirname "$0")" && pwd)/lib"
+[ -f "$LIB_DIR/system_info.sh" ] || LIB_DIR="/usr/local/hestia/lib/hestia-system-info"
+[ -f "$LIB_DIR/system_info.sh" ] && . "$LIB_DIR/system_info.sh"
+
+# Default output format
+OUTPUT_FORMAT="text"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --json)
+            OUTPUT_FORMAT="json"
+            shift
+            ;;
+        --text)
+            OUTPUT_FORMAT="text"
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--json|--text]"
+            echo "  --json    Output in JSON format"
+            echo "  --text    Output in human readable text format (default)"
+            echo "  -h, --help Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Function to get CPU model (fallback if library not loaded)
+if ! declare -F get_cpu_model >/dev/null; then
+get_cpu_model() {
+    if [ -f /proc/cpuinfo ]; then
+        grep "model name" /proc/cpuinfo | head -1 | cut -d: -f2 | xargs
+    else
+        lscpu | grep "Model name" | cut -d: -f2 | xargs 2>/dev/null || echo ""
+    fi
+}
+fi
+
+# Function to output in text format
+output_text() {
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║                    🖥️  SYSTEM INFORMATION                    ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    
+    # CPU Model
+    echo -e "${YELLOW}🔧 CPU Model:${NC}"
+    local cpu_model=$(get_cpu_model)
+    echo -e "   ${GREEN}►${NC} $cpu_model"
+    echo
+    
+    # Disk Usage
+    echo -e "${YELLOW}💾 Disk Usage:${NC}"
+    local disk_usage=$(get_disk_usage)
+    local disk_info=$(get_disk_info)
+    local total=$(echo "$disk_info" | jq -r '.total' 2>/dev/null || echo "N/A")
+    local used=$(echo "$disk_info" | jq -r '.used' 2>/dev/null || echo "N/A")
+    local available=$(echo "$disk_info" | jq -r '.available' 2>/dev/null || echo "N/A")
+    
+    # Progress bar for disk usage
+    local bar_length=20
+    local filled=$((disk_usage * bar_length / 100))
+    local empty=$((bar_length - filled))
+    
+    local progress_bar=""
+    for ((i=0; i<filled; i++)); do
+        progress_bar="${progress_bar}█"
+    done
+    for ((i=0; i<empty; i++)); do
+        progress_bar="${progress_bar}░"
+    done
+    
+    # Color based on usage
+    local usage_color=$GREEN
+    if [ "$disk_usage" -gt 80 ]; then
+        usage_color=$RED
+    elif [ "$disk_usage" -gt 60 ]; then
+        usage_color=$YELLOW
+    fi
+    
+    echo -e "   ${GREEN}►${NC} Usage: ${usage_color}${disk_usage}%${NC} [${progress_bar}]"
+    echo -e "   ${GREEN}►${NC} Total: ${BLUE}$total${NC}"
+    echo -e "   ${GREEN}►${NC} Used: ${YELLOW}$used${NC}"
+    echo -e "   ${GREEN}►${NC} Available: ${GREEN}$available${NC}"
+    echo
+    
+    # RAM Information
+    echo -e "${YELLOW}🧠 RAM Information:${NC}"
+    local ram_info=$(get_ram_info)
+    local ram_total=$(echo "$ram_info" | jq -r '.total' 2>/dev/null || echo "N/A")
+    local ram_used=$(echo "$ram_info" | jq -r '.used' 2>/dev/null || echo "N/A")
+    local ram_free=$(echo "$ram_info" | jq -r '.free' 2>/dev/null || echo "N/A")
+    local ram_usage_percent=$(echo "$ram_info" | jq -r '.usage_percent' 2>/dev/null || echo "N/A")
+    
+    # Progress bar for RAM usage
+    local ram_bar_length=20
+    local ram_filled=$((ram_usage_percent * ram_bar_length / 100))
+    local ram_empty=$((ram_bar_length - ram_filled))
+    
+    local ram_progress_bar=""
+    for ((i=0; i<ram_filled; i++)); do
+        ram_progress_bar="${ram_progress_bar}█"
+    done
+    for ((i=0; i<ram_empty; i++)); do
+        ram_progress_bar="${ram_progress_bar}░"
+    done
+    
+    # Color based on RAM usage
+    local ram_usage_color=$GREEN
+    if [ "$ram_usage_percent" -gt 80 ]; then
+        ram_usage_color=$RED
+    elif [ "$ram_usage_percent" -gt 60 ]; then
+        ram_usage_color=$YELLOW
+    fi
+    
+    echo -e "   ${GREEN}►${NC} Usage: ${ram_usage_color}${ram_usage_percent}%${NC} [${ram_progress_bar}]"
+    echo -e "   ${GREEN}►${NC} Total: ${BLUE}$ram_total${NC}"
+    echo -e "   ${GREEN}►${NC} Used: ${YELLOW}$ram_used${NC}"
+    echo -e "   ${GREEN}►${NC} Free: ${GREEN}$ram_free${NC}"
+    echo
+    
+    # Remote Backup Status
+    echo -e "${YELLOW}💾 Remote Backup Status:${NC}"
+    local backup_info=$(check_backup_status)
+    local backup_enabled=$(echo "$backup_info" | jq -r '.enabled' 2>/dev/null || echo "false")
+    local backup_status=$(echo "$backup_info" | jq -r '.status' 2>/dev/null || echo "unknown")
+    
+    if [ "$backup_enabled" = true ]; then
+        echo -e "   ${GREEN}►${NC} Status: ${GREEN}✅ $backup_status${NC}"
+    else
+        echo -e "   ${GREEN}►${NC} Status: ${RED}❌ $backup_status${NC}"
+    fi
+    echo
+    
+    # Root Folders
+    echo -e "${YELLOW}📁 Root Folders:${NC}"
+    local folders_info=$(check_root_folders)
+    
+    echo "$folders_info" | jq -r 'to_entries[] | "   ► \(.key): \(if .value.exists then "✅ EXISTS" else "❌ NOT FOUND" end)"' 2>/dev/null || {
+        # Fallback if jq is not available
+        for folder in "link-manager" "google-auth" "tc-api-site-details"; do
+            if [ -d "/root/$folder" ]; then
+                echo -e "   ${GREEN}►${NC} $folder: ${GREEN}✅ EXISTS${NC}"
+            else
+                echo -e "   ${GREEN}►${NC} $folder: ${RED}❌ NOT FOUND${NC}"
+            fi
+        done
+    }
+    echo
+    
+    # System Uptime
+    echo -e "${YELLOW}⏱️  System Uptime:${NC}"
+    local uptime=$(uptime | awk -F'up ' '{print $2}' | awk -F',' '{print $1}')
+    echo -e "   ${GREEN}►${NC} $uptime"
+    echo
+    
+    # Timestamp
+    echo -e "${YELLOW}🕐 Timestamp:${NC}"
+    echo -e "   ${GREEN}►${NC} $(date '+%Y-%m-%d %H:%M:%S')"
+    echo -e "   ${GREEN}►${NC} Timezone: $(date '+%Z')"
+    echo
+    
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║                      📊 END OF REPORT                        ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+}
+
+# Function to output in JSON format
+output_json() {
+    local cpu_model=$(get_cpu_model)
+    local disk_info=$(get_disk_info)
+    local ram_info=$(get_ram_info)
+    local backup_info=$(check_backup_status)
+    local folders_info=$(check_root_folders)
+    
+    cat << EOF
+{
+  "cpu": {
+    "model": "$cpu_model"
+  },
+  "disk": $disk_info,
+  "ram": $ram_info,
+  "remote_backup": $backup_info,
+  "root_folders": $folders_info,
+  "timestamp": "$(date '+%Y-%m-%d %H:%M:%S')",
+  "server_timezone": "$(date '+%Z')"
+}
+EOF
+}
+
+# Main execution
+if [ "$OUTPUT_FORMAT" = "json" ]; then
+    output_json
+else
+    output_text
+fi

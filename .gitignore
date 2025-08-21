@@ -1,0 +1,26 @@
+# Temporary files
+*.tmp
+*.bak
+*.old
+*~
+*.swp
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Log files
+*.log
+
+# Test files
+test_*
+tests/
+
+# Backup files
+*.backup
