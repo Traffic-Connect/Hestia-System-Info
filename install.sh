@@ -170,13 +170,16 @@ echo "  v-system-info --json   # JSON вывод"
 echo "  v-system-info --help   # Справка"
 echo
 
-echo -e "${GREEN}Веб API:${NC}"
-echo "  https://your-domain.com:8083/v-system-info.php"
-echo "  https://your-domain.com:8083/hestia-api-integration.php"
+echo -e "${GREEN}Локальное использование:${NC}"
+echo "  v-system-info          # Основная команда"
+echo "  v-system-info --json   # JSON вывод"
+echo "  v-system-info --help   # Справка"
 echo
 
-echo -e "${GREEN}Авторизация:${NC}"
-echo "  Используйте логин/пароль от Hestia CP"
+echo -e "${GREEN}Дополнительные опции:${NC}"
+echo "  v-system-info --cpu    # Только CPU"
+echo "  v-system-info --disk   # Только диск"
+echo "  v-system-info --ram    # Только RAM"
 echo
 
 echo -e "${BLUE}=== Установка завершена! ===${NC}"
