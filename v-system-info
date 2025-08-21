@@ -170,18 +170,6 @@ output_text() {
     }
     echo
     
-    # Время работы системы
-    echo -e "${YELLOW}⏱️  Время работы системы:${NC}"
-    local uptime=$(uptime | awk -F'up ' '{print $2}' | awk -F',' '{print $1}')
-    echo -e "   ${GREEN}►${NC} $uptime"
-    echo
-    
-    # Временная метка
-    echo -e "${YELLOW}🕐 Временная метка:${NC}"
-    echo -e "   ${GREEN}►${NC} $(date '+%Y-%m-%d %H:%M:%S')"
-    echo -e "   ${GREEN}►${NC} Часовой пояс: $(date '+%Z')"
-    echo
-    
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║                      📊 КОНЕЦ ОТЧЕТА                          ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
