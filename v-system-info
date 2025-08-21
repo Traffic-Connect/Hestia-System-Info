@@ -191,9 +191,7 @@ output_json() {
   "disk": $disk_info,
   "ram": $ram_info,
   "remote_backup": $backup_info,
-  "root_folders": $folders_info,
-  "timestamp": "$(date '+%Y-%m-%d %H:%M:%S')",
-  "server_timezone": "$(date '+%Z')"
+  "root_folders": $folders_info
 }
 EOF
 }
