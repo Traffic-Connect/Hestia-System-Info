@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Colors (optional for callers)
+# Цвета (опционально для вызывающих)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 get_cpu_model() {
-	# Try /proc/cpuinfo first (Linux)
+	# Пробуем /proc/cpuinfo сначала (Linux)
 	if [ -f /proc/cpuinfo ]; then
 		local cpu_model=$(grep "model name" /proc/cpuinfo | head -1 | cut -d: -f2 | xargs)
 		if [ -n "$cpu_model" ]; then
@@ -17,7 +17,7 @@ get_cpu_model() {
 		fi
 	fi
 	
-	# Try lscpu command
+	# Пробуем команду lscpu
 	if command -v lscpu &> /dev/null; then
 		local cpu_model=$(lscpu | grep "Model name" | cut -d: -f2 | xargs 2>/dev/null)
 		if [ -n "$cpu_model" ]; then
@@ -26,7 +26,7 @@ get_cpu_model() {
 		fi
 	fi
 	
-	# Try sysctl (macOS)
+	# Пробуем sysctl (macOS)
 	if command -v sysctl &> /dev/null; then
 		local cpu_model=$(sysctl -n machdep.cpu.brand_string 2>/dev/null)
 		if [ -n "$cpu_model" ]; then
@@ -35,15 +35,15 @@ get_cpu_model() {
 		fi
 	fi
 	
-	# Try uname for basic info
+	# Пробуем uname для базовой информации
 	local cpu_model=$(uname -m 2>/dev/null)
 	if [ -n "$cpu_model" ]; then
 		echo "$cpu_model"
 		return 0
 	fi
 	
-	# Final fallback
-	echo "Unknown CPU"
+	# Финальный запасной вариант
+	echo "Неизвестный процессор"
 }
 
 get_disk_usage() {
@@ -70,7 +70,7 @@ get_disk_info() {
 }
 
 get_ram_info() {
-	# Try free command first (Linux)
+	# Пробуем команду free сначала (Linux)
 	if command -v free &> /dev/null; then
 		local total=$(free -h | grep '^Mem:' | awk '{print $2}')
 		local used=$(free -h | grep '^Mem:' | awk '{print $3}')
@@ -90,12 +90,12 @@ get_ram_info() {
 		fi
 	fi
 	
-	# Try vm_stat for macOS (simplified)
+	# Пробуем vm_stat для macOS (упрощенный)
 	if command -v vm_stat &> /dev/null; then
 		local total_ram=$(sysctl -n hw.memsize 2>/dev/null)
 		local total_gb=$((total_ram / 1024 / 1024 / 1024))
 		
-		# Get memory usage from top command
+		# Получаем использование памяти из команды top
 		local mem_usage=$(top -l 1 | grep PhysMem | awk '{print $2}' | sed 's/G//')
 		local mem_used=$(echo "$mem_usage" | awk -F'/' '{print $1}')
 		local mem_total=$(echo "$mem_usage" | awk -F'/' '{print $2}')
@@ -114,8 +114,8 @@ get_ram_info() {
 		fi
 	fi
 	
-	# Fallback
-	echo "{\"total\":\"N/A\",\"used\":\"N/A\",\"free\":\"N/A\",\"usage_percent\":0}"
+	# Запасной вариант
+	echo "{\"total\":\"Н/Д\",\"used\":\"Н/Д\",\"free\":\"Н/Д\",\"usage_percent\":0}"
 }
 
 check_backup_status() {
@@ -136,9 +136,9 @@ check_backup_status() {
 		fi
 	fi
 	if [ "$backup_enabled" = true ]; then
-		echo "{\"enabled\":true,\"status\":\"active\"}"
+		echo "{\"enabled\":true,\"status\":\"активен\"}"
 	else
-		echo "{\"enabled\":false,\"status\":\"disabled\"}"
+		echo "{\"enabled\":false,\"status\":\"отключен\"}"
 	fi
 }
 
