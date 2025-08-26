@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# v-system-info — кастомная команда HestiaCP
+# Возвращает системную сводку в JSON.
+
+set -euo pipefail
+export LANG=C LC_ALL=C
+
+# -------- CPU Model --------
+CPU_MODEL="$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+if [[ -z "${CPU_MODEL}" ]]; then
+  CPU_MODEL="$(lscpu 2>/dev/null | awk -F': *' '/Model name/{print $2; exit}' || true)"
+fi
+[[ -n "${CPU_MODEL}" ]] || CPU_MODEL="unknown"
+
+# -------- Disk info (root filesystem) --------
+DISK_INFO=$(df -PBG / | awk 'NR==2{gsub("G","",$2); gsub("G","",$3); gsub(/%/,"",$5); print $2, $3, $5}')
+DISK_TOTAL_GB=$(echo "$DISK_INFO" | awk '{print $1}')
+DISK_USED_GB=$(echo "$DISK_INFO"  | awk '{print $2}')
+DISK_USED_PCT=$(echo "$DISK_INFO" | awk '{print $3}')
+
+# -------- Memory total (GB) --------
+MEM_TOTAL_KB="$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)"
+MEM_TOTAL_GB="$(awk -v kb="${MEM_TOTAL_KB:-0}" 'BEGIN{printf("%.2f", kb/1024/1024)}')"
+
+# -------- OS Version --------
+OS_VERSION="unknown"
+if [[ -r /etc/os-release ]]; then
+  # Считываем как переменные окружения, без пайплайнов (чтобы не падать при отсутствии ключа)
+  # shellcheck source=/dev/null
+  . /etc/os-release || true
+  OS_VERSION="${PRETTY_NAME:-${NAME:-unknown}}"
+fi
+
+# -------- Hestia Version & Remote Backup --------
+HESTIA_CONF="/usr/local/hestia/conf/hestia.conf"
+HESTIA_VERSION="unknown"
+REMOTE_BACKUP_ENABLED=false
+REMOTE_BACKUP_SYSTEM=""
+
+if [[ -r "$HESTIA_CONF" ]]; then
+  # Извлекаем значения напрямую awk'ом, без «ломающих» пайплайнов
+  HESTIA_VERSION="$(awk -F= '$1=="HESTIA"{gsub(/'\''|"/,"",$2); print $2; exit}' "$HESTIA_CONF" 2>/dev/null || true)"
+  [[ -n "${HESTIA_VERSION}" ]] || HESTIA_VERSION="unknown"
+
+  REMOTE_BACKUP_SYSTEM="$(awk -F= '$1=="BACKUP_SYSTEM"{gsub(/'\''|"/,"",$2); print $2; exit}' "$HESTIA_CONF" 2>/dev/null || true)"
+  val_lower="$(echo "${REMOTE_BACKUP_SYSTEM}" | tr '[:upper:]' '[:lower:]')"
+  case "${val_lower}" in
+    ""|"local"|"none") REMOTE_BACKUP_ENABLED=false ;;
+    *) REMOTE_BACKUP_ENABLED=true ;;
+  esac
+fi
+
+# -------- Folders presence in /root --------
+check_dir() { [[ -d "/root/$1" ]] && echo true || echo false; }
+HAS_LINK_MANAGER="$(check_dir "link-manager")"
+HAS_GOOGLE_AUTH="$(check_dir "google-auth")"
+HAS_TC_API_SITE_DETAILS="$(check_dir "tc-api-site-details")"
+
+# -------- JSON-safe string escaper --------
+json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g' <<<"$1"; }
+
+CPU_MODEL_ESC="$(json_escape "${CPU_MODEL}")"
+OS_VERSION_ESC="$(json_escape "${OS_VERSION}")"
+HESTIA_VERSION_ESC="$(json_escape "${HESTIA_VERSION}")"
+REMOTE_BACKUP_SYSTEM_ESC="$(json_escape "${REMOTE_BACKUP_SYSTEM}")"
+
+# -------- JSON output --------
+cat <<EOF
+{
+  "status": "ok",
+  "cpu_model": "${CPU_MODEL_ESC}",
+  "disk_total_gb": ${DISK_TOTAL_GB},
+  "disk_used_gb": ${DISK_USED_GB},
+  "disk_used_pct": ${DISK_USED_PCT},
+  "mem_total_gb": ${MEM_TOTAL_GB},
+  "remote_backup_enabled": ${REMOTE_BACKUP_ENABLED},
+  "remote_backup_system": "${REMOTE_BACKUP_SYSTEM_ESC}",
+  "os_version": "${OS_VERSION_ESC}",
+  "hestia_version": "${HESTIA_VERSION_ESC}",
+  "root_folders": {
+    "link-manager": ${HAS_LINK_MANAGER},
+    "google-auth": ${HAS_GOOGLE_AUTH},
+    "tc-api-site-details": ${HAS_TC_API_SITE_DETAILS}
+  }
+}
+EOF
