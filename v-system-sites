@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# v-system-sites — вывести пользователей и их сайты c признаками:
+# - enabled (сайт включён / не заблокирован)
+# - proxy_template (шаблон прокси)
+#
+# Требует утилиту jq (apt install -y jq / yum install -y jq)
+
+set -euo pipefail
+export LANG=C LC_ALL=C
+
+HESTIA_BIN="/usr/local/hestia/bin"
+USERS_DIR="/usr/local/hestia/data/users"
+
+# ---------- helpers ----------
+die() { echo "{\"status\":\"error\",\"message\":\"$*\"}"; exit 1; }
+
+need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Не найдено: $1"; }
+
+# Проверяем обязательные бинарники
+need_cmd "${HESTIA_BIN}/v-list-web-domains"
+need_cmd "${HESTIA_BIN}/v-list-web-domain"
+need_cmd jq
+
+# Список пользователей Hestia: берём из каталога data/users
+if [[ ! -d "${USERS_DIR}" ]]; then
+  die "Не найден каталог пользователей: ${USERS_DIR}"
+fi
+
+# Сформируем массив пользователей (по именам каталогов)
+mapfile -t USERS < <(find "${USERS_DIR}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+
+# Начинаем JSON-вывод
+echo '{'
+echo '  "status": "ok",'
+echo '  "users": ['
+
+FIRST_USER=true
+for USER in "${USERS[@]}"; do
+  # Получаем список доменов пользователя в JSON
+  # Формат Hestia: объект, где ключи — домены. Пример:
+  # { "example.com": {...}, "site2.net": {...} }
+  DOMAINS_JSON="$("${HESTIA_BIN}/v-list-web-domains" "${USER}" json 2>/dev/null || echo '{}')"
+
+  # Вытащим список доменных имён (ключи верхнего уровня)
+  mapfile -t DOMAINS < <(jq -r 'keys[]' <<<"${DOMAINS_JSON}" 2>/dev/null || true)
+
+  # Готовим массив сайтов
+  SITES_JSON="["
+
+  FIRST_SITE=true
+  for DOMAIN in "${DOMAINS[@]}"; do
+    # Детали конкретного домена
+    DOMAIN_JSON="$("${HESTIA_BIN}/v-list-web-domain" "${USER}" "${DOMAIN}" json 2>/dev/null || echo '{}')"
+
+    # Определяем enabled:
+    # В Hestia есть флаги STATUS/SUSPENDED. Считаем включённым, если SUSPENDED == "no"
+    ENABLED="$(jq -r '(.SUSPENDED // .suspended // "no")' <<<"${DOMAIN_JSON}" 2>/dev/null || echo "no")"
+    if [[ "${ENABLED}" == "no" || "${ENABLED}" == "0" || "${ENABLED}" == "false" ]]; then
+      ENABLED_BOOL=false
+    else
+      ENABLED_BOOL=true
+    fi
+
+    # Определяем proxy_template:
+    # Обычно ключ называется PROXY_TEMPLATE. На всякий случай проверяем и альтернативы.
+    PROXY_TEMPLATE="$(jq -r '(.PROXY_TEMPLATE // .proxy_template // .PROXY // .proxy // "")' <<<"${DOMAIN_JSON}" 2>/dev/null || echo "")"
+    # Экранируем кавычки в строке для JSON
+    PROXY_TEMPLATE_ESC="$(sed 's/\\/\\\\/g; s/"/\\"/g' <<<"$PROXY_TEMPLATE")"
+
+    # Собираем кусок JSON для сайта
+    SITE_JSON=$(cat <<EOF
+{ "domain": "${DOMAIN}", "enabled": ${ENABLED_BOOL}, "proxy_template": "${PROXY_TEMPLATE_ESC}" }
+EOF
+)
+
+    if $FIRST_SITE; then
+      SITES_JSON+="${SITE_JSON}"
+      FIRST_SITE=false
+    else
+      SITES_JSON+=", ${SITE_JSON}"
+    fi
+  done
+  SITES_JSON+="]"
+
+  # Пользовательский блок JSON
+  USER_BLOCK=$(cat <<EOF
+{ "user": "${USER}", "sites": ${SITES_JSON} }
+EOF
+)
+
+  if $FIRST_USER; then
+    echo "    ${USER_BLOCK}"
+    FIRST_USER=false
+  else
+    echo "    ,${USER_BLOCK}"
+  fi
+done
+
+echo '  ]'
+echo '}'
