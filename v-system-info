@@ -1,204 +1,114 @@
-#!/bin/bash
-#
-# Кастомная команда Hestia: v-system-info
-# Возвращает информацию о системе включая модель CPU, использование диска, RAM, статус бекапа и папки в /root
-#
-# Использование: ./v-system-info [--json|--text]
-#
+#!/usr/bin/env bash
+# v-system-info — кастомная команда HestiaCP
+# Возвращает системную сводку в JSON.
 
-# Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # Без цвета
+set -euo pipefail
+export LANG=C LC_ALL=C
 
-# Загружаем общую библиотеку если доступна
-LIB_DIR="$(cd "$(dirname "$0")" && pwd)/lib"
-[ -f "$LIB_DIR/system_info.sh" ] || LIB_DIR="/usr/local/hestia/lib/hestia-system-info"
-[ -f "$LIB_DIR/system_info.sh" ] && . "$LIB_DIR/system_info.sh"
+# ---------- helpers ----------
+json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g' <<<"$1"; }
+bool() { [[ "$1" == "true" ]] && echo true || echo false; }
 
-# Формат вывода по умолчанию
-OUTPUT_FORMAT="text"
+# ---------- CPU ----------
+CPU_MODEL="$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+if [[ -z "${CPU_MODEL}" ]]; then
+  CPU_MODEL="$(lscpu 2>/dev/null | awk -F': *' '/Model name/{print $2; exit}' || true)"
+fi
+[[ -n "${CPU_MODEL}" ]] || CPU_MODEL="unknown"
 
-# Парсим аргументы командной строки
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --json)
-            OUTPUT_FORMAT="json"
-            shift
-            ;;
-        --text)
-            OUTPUT_FORMAT="text"
-            shift
-            ;;
-        -h|--help)
-            echo "Использование: $0 [--json|--text]"
-            echo "  --json    Вывод в формате JSON"
-            echo "  --text    Вывод в читаемом текстовом формате (по умолчанию)"
-            echo "  -h, --help Показать эту справку"
-            exit 0
-            ;;
-        *)
-            echo "Неизвестная опция: $1"
-            echo "Используйте -h или --help для получения справки"
-            exit 1
-            ;;
-    esac
-done
+# ---------- Disk (root "/") ----------
+# Берём объём и использование именно корневого раздела.
+# -PBG даёт значения в ГБ и стабильный парсинг
+# Поля: 2=Size, 3=Used, 5=Use%
+read -r DISK_TOTAL_GB DISK_USED_GB DISK_USED_PCT < <(
+  df -PBG / 2>/dev/null | awk 'NR==2{gsub("G","",$2); gsub("G","",$3); gsub(/%/,"",$5); print $2, $3, $5}'
+)
+: "${DISK_TOTAL_GB:=0}"
+: "${DISK_USED_GB:=0}"
+: "${DISK_USED_PCT:=0}"
 
-# Функция для получения модели CPU (запасной вариант если библиотека не загружена)
-if ! declare -F get_cpu_model >/dev/null; then
-get_cpu_model() {
-    if [ -f /proc/cpuinfo ]; then
-        grep "model name" /proc/cpuinfo | head -1 | cut -d: -f2 | xargs
-    else
-        lscpu | grep "Model name" | cut -d: -f2 | xargs 2>/dev/null || echo ""
-    fi
-}
+# ---------- Memory (total GB) ----------
+MEM_TOTAL_KB="$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)"
+MEM_TOTAL_GB="$(awk -v kb="${MEM_TOTAL_KB:-0}" 'BEGIN{printf("%.2f", kb/1024/1024)}')"
+
+# ---------- OS version ----------
+OS_VERSION="unknown"
+if [[ -r /etc/os-release ]]; then
+  # shellcheck source=/dev/null
+  . /etc/os-release || true
+  OS_VERSION="${PRETTY_NAME:-${NAME:-unknown}}"
 fi
 
-# Функция для вывода в текстовом формате
-output_text() {
-    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    🖥️  ИНФОРМАЦИЯ О СИСТЕМЕ                    ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo
-    
-    # Модель процессора
-    echo -e "${YELLOW}🔧 Модель процессора:${NC}"
-    local cpu_model=$(get_cpu_model)
-    echo -e "   ${GREEN}►${NC} $cpu_model"
-    echo
-    
-    # Использование диска
-    echo -e "${YELLOW}💾 Использование диска:${NC}"
-    local disk_usage=$(get_disk_usage)
-    local disk_info=$(get_disk_info)
-    local total=$(echo "$disk_info" | jq -r '.total' 2>/dev/null || echo "Н/Д")
-    local used=$(echo "$disk_info" | jq -r '.used' 2>/dev/null || echo "Н/Д")
-    local available=$(echo "$disk_info" | jq -r '.available' 2>/dev/null || echo "Н/Д")
-    
-    # Прогресс-бар для использования диска
-    local bar_length=20
-    local filled=$(awk "BEGIN {printf \"%.0f\", $disk_usage * $bar_length / 100}" 2>/dev/null || echo "0")
-    local empty=$((bar_length - filled))
-    
-    local progress_bar=""
-    for ((i=0; i<filled; i++)); do
-        progress_bar="${progress_bar}█"
-    done
-    for ((i=0; i<empty; i++)); do
-        progress_bar="${progress_bar}░"
-    done
-    
-    # Цвет в зависимости от использования
-    local usage_color=$GREEN
-    if [ "$(awk "BEGIN {print ($disk_usage > 80) ? 1 : 0}")" -eq 1 ]; then
-        usage_color=$RED
-    elif [ "$(awk "BEGIN {print ($disk_usage > 60) ? 1 : 0}")" -eq 1 ]; then
-        usage_color=$YELLOW
-    fi
-    
-    echo -e "   ${GREEN}►${NC} Использование: ${usage_color}${disk_usage}%${NC} [${progress_bar}]"
-    echo -e "   ${GREEN}►${NC} Всего: ${BLUE}$total${NC}"
-    echo -e "   ${GREEN}►${NC} Использовано: ${YELLOW}$used${NC}"
-    echo -e "   ${GREEN}►${NC} Доступно: ${GREEN}$available${NC}"
-    echo
-    
-    # Информация о RAM
-    echo -e "${YELLOW}🧠 Информация о RAM:${NC}"
-    local ram_info=$(get_ram_info)
-    local ram_total=$(echo "$ram_info" | jq -r '.total' 2>/dev/null || echo "Н/Д")
-    local ram_used=$(echo "$ram_info" | jq -r '.used' 2>/dev/null || echo "Н/Д")
-    local ram_free=$(echo "$ram_info" | jq -r '.free' 2>/dev/null || echo "Н/Д")
-    local ram_usage_percent=$(echo "$ram_info" | jq -r '.usage_percent' 2>/dev/null || echo "Н/Д")
-    
-    # Прогресс-бар для использования RAM
-    local ram_bar_length=20
-    local ram_filled=$(awk "BEGIN {printf \"%.0f\", $ram_usage_percent * $ram_bar_length / 100}" 2>/dev/null || echo "0")
-    local ram_empty=$((ram_bar_length - ram_filled))
-    
-    local ram_progress_bar=""
-    for ((i=0; i<ram_filled; i++)); do
-        ram_progress_bar="${ram_progress_bar}█"
-    done
-    for ((i=0; i<ram_empty; i++)); do
-        ram_progress_bar="${ram_progress_bar}░"
-    done
-    
-    # Цвет в зависимости от использования RAM
-    local ram_usage_color=$GREEN
-    if [ "$(awk "BEGIN {print ($ram_usage_percent > 80) ? 1 : 0}")" -eq 1 ]; then
-        ram_usage_color=$RED
-    elif [ "$(awk "BEGIN {print ($ram_usage_percent > 60) ? 1 : 0}")" -eq 1 ]; then
-        ram_usage_color=$YELLOW
-    fi
-    
-    echo -e "   ${GREEN}►${NC} Использование: ${ram_usage_color}${ram_usage_percent}%${NC} [${ram_progress_bar}]"
-    echo -e "   ${GREEN}►${NC} Всего: ${BLUE}$ram_total${NC}"
-    echo -e "   ${GREEN}►${NC} Использовано: ${YELLOW}$ram_used${NC}"
-    echo -e "   ${GREEN}►${NC} Свободно: ${GREEN}$ram_free${NC}"
-    echo
-    
-    # Статус удаленного бекапа
-    echo -e "${YELLOW}💾 Статус удаленного бекапа:${NC}"
-    local backup_info=$(check_backup_status)
-    local backup_enabled=$(echo "$backup_info" | jq -r '.enabled' 2>/dev/null || echo "false")
-    local backup_status=$(echo "$backup_info" | jq -r '.status' 2>/dev/null || echo "неизвестно")
-    
-    if [ "$backup_enabled" = true ]; then
-        echo -e "   ${GREEN}►${NC} Статус: ${GREEN}✅ $backup_status${NC}"
-    else
-        echo -e "   ${GREEN}►${NC} Статус: ${RED}❌ $backup_status${NC}"
-    fi
-    echo
-    
-    # Папки в /root
-    echo -e "${YELLOW}📁 Папки в /root:${NC}"
-    local folders_info=$(check_root_folders)
-    
-    echo "$folders_info" | jq -r 'to_entries[] | "   ► \(.key): \(if .value.exists then "✅ СУЩЕСТВУЕТ" else "❌ НЕ НАЙДЕНА" end)"' 2>/dev/null || {
-        # Запасной вариант если jq недоступен
-        for folder in "link-manager" "google-auth" "tc-api-site-details"; do
-            if [ -d "/root/$folder" ]; then
-                echo -e "   ${GREEN}►${NC} $folder: ${GREEN}✅ СУЩЕСТВУЕТ${NC}"
-            else
-                echo -e "   ${GREEN}►${NC} $folder: ${RED}❌ НЕ НАЙДЕНА${NC}"
-            fi
-        done
-    }
-    echo
-    
-    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                      📊 КОНЕЦ ОТЧЕТА                          ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
-}
+# ---------- Hestia version (robust) ----------
+HESTIA_CONF="/usr/local/hestia/conf/hestia.conf"
+HESTIA_VERSION="unknown"
+if [[ -r "$HESTIA_CONF" ]]; then
+  RAW_LINE="$(grep -m1 -E '^(HESTIA|VERSION|RELEASE)=' "$HESTIA_CONF" 2>/dev/null || true)"
+  if [[ -n "${RAW_LINE}" ]]; then
+    RAW_VAL="${RAW_LINE#*=}"
+    # trim/strip quotes/CR
+    HESTIA_VERSION="$(echo -n "$RAW_VAL" \
+      | tr -d '\r' \
+      | sed -e 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+             -e 's/^"//; s/"$//' \
+             -e "s/^'//; s/'$//")"
+    [[ -n "${HESTIA_VERSION}" ]] || HESTIA_VERSION="unknown"
+  fi
+fi
+# fallback: version.txt
+if [[ "${HESTIA_VERSION}" == "unknown" && -r /usr/local/hestia/web/version.txt ]]; then
+  HESTIA_VERSION="$(tr -d '\n\r\t ' </usr/local/hestia/web/version.txt)"
+  [[ -n "${HESTIA_VERSION}" ]] || HESTIA_VERSION="unknown"
+fi
+# последний шанс: системная v-команда
+if [[ "${HESTIA_VERSION}" == "unknown" && -x /usr/local/hestia/bin/v-list-sys-info ]]; then
+  HESTIA_VERSION="$(/usr/local/hestia/bin/v-list-sys-info 2>/dev/null | awk -F': *' '/Hestia/{print $2; exit}' || true)"
+  [[ -n "${HESTIA_VERSION}" ]] || HESTIA_VERSION="unknown"
+fi
 
-# Функция для вывода в формате JSON
-output_json() {
-    local cpu_model=$(get_cpu_model)
-    local disk_info=$(get_disk_info)
-    local ram_info=$(get_ram_info)
-    local backup_info=$(check_backup_status)
-    local folders_info=$(check_root_folders)
-    
-    cat << EOF
+# ---------- Remote backup status ----------
+REMOTE_BACKUP_ENABLED=false
+REMOTE_BACKUP_SYSTEM=""
+if [[ -r "$HESTIA_CONF" ]]; then
+  RAW_BACKUP="$(awk -F= '$1=="BACKUP_SYSTEM"{print $2; exit}' "$HESTIA_CONF" 2>/dev/null || true)"
+  RAW_BACKUP="$(echo -n "$RAW_BACKUP" | tr -d '\r' | sed -e 's/^ *//; s/ *$//' -e 's/^"//; s/"$//' -e "s/^'//; s/'$//")"
+  REMOTE_BACKUP_SYSTEM="${RAW_BACKUP}"
+  lower="$(echo "${RAW_BACKUP}" | tr '[:upper:]' '[:lower:]')"
+  case "${lower}" in
+    ""|"local"|"none") REMOTE_BACKUP_ENABLED=false ;;
+    *) REMOTE_BACKUP_ENABLED=true ;;
+  esac
+fi
+
+# ---------- Root folders presence ----------
+check_dir() { [[ -d "/root/$1" ]] && echo true || echo false; }
+HAS_LINK_MANAGER="$(check_dir "link-manager")"
+HAS_GOOGLE_AUTH="$(check_dir "google-auth")"
+HAS_TC_API_SITE_DETAILS="$(check_dir "tc-api-site-details")"
+
+# ---------- JSON-safe strings ----------
+CPU_MODEL_ESC="$(json_escape "${CPU_MODEL}")"
+OS_VERSION_ESC="$(json_escape "${OS_VERSION}")"
+HESTIA_VERSION_ESC="$(json_escape "${HESTIA_VERSION}")"
+REMOTE_BACKUP_SYSTEM_ESC="$(json_escape "${REMOTE_BACKUP_SYSTEM}")"
+
+# ---------- Output ----------
+cat <<EOF
 {
-  "cpu": {
-    "model": "$cpu_model"
-  },
-  "disk": $disk_info,
-  "ram": $ram_info,
-  "remote_backup": $backup_info,
-  "root_folders": $folders_info
+  "status": "ok",
+  "cpu_model": "${CPU_MODEL_ESC}",
+  "os_version": "${OS_VERSION_ESC}",
+  "hestia_version": "${HESTIA_VERSION_ESC}",
+  "mem_total_gb": ${MEM_TOTAL_GB},
+  "disk_total_gb": ${DISK_TOTAL_GB},
+  "disk_used_gb": ${DISK_USED_GB},
+  "disk_used_pct": ${DISK_USED_PCT},
+  "remote_backup_enabled": $(bool "${REMOTE_BACKUP_ENABLED}"),
+  "remote_backup_system": "${REMOTE_BACKUP_SYSTEM_ESC}",
+  "root_folders": {
+    "link-manager": ${HAS_LINK_MANAGER},
+    "google-auth": ${HAS_GOOGLE_AUTH},
+    "tc-api-site-details": ${HAS_TC_API_SITE_DETAILS}
+  }
 }
 EOF
-}
-
-# Основное выполнение
-if [ "$OUTPUT_FORMAT" = "json" ]; then
-    output_json
-else
-    output_text
-fi
