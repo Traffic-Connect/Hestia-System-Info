@@ -25,14 +25,14 @@
 
 ## ⚙️ Установка
 
-### 1. Скопировать скрипт
+### 1. Скачиваем репозиторий
 
 ```bash
-nano /usr/local/hestia/bin/v-system-info
+git clone https://github.com/Traffic-Connect/Hestia-System-Info.git && cd Hestia-System-Info && chmod +x setup.sh
 ```
 
-### 2. Задать права
+### 2. Запускаем установку
 
 ```bash
-sudo chmod 750 /usr/local/hestia/bin/v-system-info && sudo chown root:root /usr/local/hestia/bin/v-system-info
+sudo ./setup.sh
 ```
