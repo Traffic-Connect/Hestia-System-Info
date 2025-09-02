@@ -36,3 +36,17 @@ git clone https://github.com/Traffic-Connect/Hestia-System-Info.git && cd Hestia
 ```bash
 sudo ./setup.sh
 ```
+
+### 3. Получаем результат
+> === Готово ===  
+> ✓ Репозиторий: /root/hestia-system-info (ветка main)  
+> ✓ Плагин: /usr/local/hestia/bin/v-system-info  
+> ✓ Updater: /root/hestia-system-info/update-v-system-info.sh  
+> ✓ Cron: ежедневно в 02:25  
+> ✓ Лог: /var/log/v-system-info.log  
+
+> Для ручного запуска обновления:  
+> sudo bash /root/hestia-system-info/update-v-system-info.sh  
+
+> Для просмотра логов:  
+> tail -f /var/log/v-system-info.log  
