@@ -64,7 +64,7 @@ chown root:root "$LOG_FILE"
 echo "✓ Лог-файл создан: $LOG_FILE"
 
 # --- Cron ---
-CRON_CMD="30 2 * * * $UPDATER_PATH >> $LOG_FILE 2>&1"
+CRON_CMD="30 2 * * * $UPDATER_PATH"
 echo "Обновляю cron root..."
 ( crontab -l 2>/dev/null | grep -v "$(basename "$UPDATER_PATH")" ; echo "$CRON_CMD" ) | crontab -
 
