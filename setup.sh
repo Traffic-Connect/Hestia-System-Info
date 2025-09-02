@@ -64,7 +64,7 @@ chown root:root "$LOG_FILE"
 echo "✓ Лог-файл создан: $LOG_FILE"
 
 # --- Cron ---
-CRON_CMD="30 2 * * * $UPDATER_PATH"
+CRON_CMD="25 2 * * * /bin/bash $UPDATER_PATH"
 echo "Обновляю cron root..."
 ( crontab -l 2>/dev/null | grep -v "$(basename "$UPDATER_PATH")" ; echo "$CRON_CMD" ) | crontab -
 
@@ -75,11 +75,11 @@ echo "=== Готово ==="
 echo "✓ Репозиторий: $REPO_DIR (ветка $BRANCH)"
 echo "✓ Плагин: $DEST_PATH"
 echo "✓ Updater: $UPDATER_PATH"
-echo "✓ Cron: ежедневно в 02:30"
+echo "✓ Cron: ежедневно в 02:25"
 echo "✓ Лог: $LOG_FILE"
 echo ""
 echo "Для ручного запуска обновления:"
-echo "sudo $UPDATER_PATH"
+echo "sudo bash $UPDATER_PATH"
 echo ""
 echo "Для просмотра логов:"
 echo "tail -f $LOG_FILE"
