@@ -66,9 +66,14 @@ echo "✓ Лог-файл создан: $LOG_FILE"
 # --- Cron ---
 CRON_CMD="25 2 * * * /bin/bash $UPDATER_PATH"
 echo "Обновляю cron root..."
-( crontab -l 2>/dev/null | grep -v "$(basename "$UPDATER_PATH")" ; echo "$CRON_CMD" ) | crontab -
 
-echo "✓ Cron задача добавлена: $CRON_CMD"
+# Проверяем, есть ли уже такая запись
+if crontab -l 2>/dev/null | grep -qF "$CRON_CMD"; then
+  echo "✓ Cron задача уже существует: $CRON_CMD"
+else
+  ( crontab -l 2>/dev/null; echo "$CRON_CMD" ) | crontab -
+  echo "✓ Cron задача добавлена: $CRON_CMD"
+fi
 
 echo ""
 echo "=== Готово ==="
