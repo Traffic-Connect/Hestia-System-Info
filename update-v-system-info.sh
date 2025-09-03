@@ -35,10 +35,10 @@ git -C "$REPO_DIR" fetch --prune origin
 git -C "$REPO_DIR" checkout "$BRANCH" >/dev/null 2>&1 || git -C "$REPO_DIR" checkout -b "$BRANCH" "origin/$BRANCH"
 git -C "$REPO_DIR" reset --hard "origin/$BRANCH"
 
-chmod 700 "$0" 2>/dev/null || true
-
 LATEST_COMMIT="$(git -C "$REPO_DIR" rev-parse origin/$BRANCH)"
 PREV_COMMIT="$(cat "$STATE_FILE" 2>/dev/null || echo "")"
+
+chmod 700 "$REPO_DIR/update-v-system-info.sh" 2>/dev/null || true
 
 # === Проверяем наличие файла плагина ===
 PLUGIN_PATH="$REPO_DIR/$PLUGIN_REL_PATH"
