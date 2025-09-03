@@ -19,7 +19,7 @@ log() {
 }
 
 # === Проверки окружения ===
-if [ "$EUID" -ne 0 ]; then
+if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   echo "Этот скрипт нужно запускать от root" >&2
   exit 1
 fi
@@ -34,6 +34,8 @@ log "Обновляю репозиторий в $REPO_DIR"
 git -C "$REPO_DIR" fetch --prune origin
 git -C "$REPO_DIR" checkout "$BRANCH" >/dev/null 2>&1 || git -C "$REPO_DIR" checkout -b "$BRANCH" "origin/$BRANCH"
 git -C "$REPO_DIR" reset --hard "origin/$BRANCH"
+
+chmod 700 "$0" 2>/dev/null || true
 
 LATEST_COMMIT="$(git -C "$REPO_DIR" rev-parse origin/$BRANCH)"
 PREV_COMMIT="$(cat "$STATE_FILE" 2>/dev/null || echo "")"
