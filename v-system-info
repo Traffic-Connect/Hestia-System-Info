@@ -92,6 +92,9 @@ OS_VERSION_ESC="$(json_escape "${OS_VERSION}")"
 HESTIA_VERSION_ESC="$(json_escape "${HESTIA_VERSION}")"
 REMOTE_BACKUP_SYSTEM_ESC="$(json_escape "${REMOTE_BACKUP_SYSTEM}")"
 
+# ---------- Users in /home ----------
+USERS_JSON="$(ls -1 /home 2>/dev/null | awk 'BEGIN{print "["} {printf "%s\"%s\"", (NR==1?"":","), $0} END{print "]"}')"
+
 # ---------- Output ----------
 cat <<EOF
 {
@@ -109,6 +112,7 @@ cat <<EOF
     "link-manager": ${HAS_LINK_MANAGER},
     "google-auth": ${HAS_GOOGLE_AUTH},
     "tc-api-site-details": ${HAS_TC_API_SITE_DETAILS}
-  }
+  },
+  "users_home": ${USERS_JSON}
 }
 EOF
