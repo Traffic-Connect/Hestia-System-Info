@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # v-system-info — кастомная команда HestiaCP
 # Возвращает системную сводку в JSON.
+# Version 1.0.1
 
 set -euo pipefail
 export LANG=C LC_ALL=C
@@ -86,6 +87,31 @@ HAS_LINK_MANAGER="$(check_dir "link-manager")"
 HAS_GOOGLE_AUTH="$(check_dir "google-auth")"
 HAS_TC_API_SITE_DETAILS="$(check_dir "tc-api-site-details")"
 
+# ---------- Deploy schema version ----------
+DEPLOY_SCHEMA_FILE="/root/schemas/deploy.php"
+DEPLOY_SCHEMA_EXISTS=false
+DEPLOY_SCHEMA_VERSION=""
+DEPLOY_SCHEMA_VERSION_JSON="null"
+
+if [[ -f "$DEPLOY_SCHEMA_FILE" ]]; then
+  DEPLOY_SCHEMA_EXISTS=true
+
+  # Ищем первое вхождение "Version <числа и точки>" (включая строки с "* Version 1.0" внутри комментария)
+  RAW_VER_LINE="$(grep -m1 -E '[Vv]ersion[[:space:]]+[0-9]+(\.[0-9]+)*' "$DEPLOY_SCHEMA_FILE" 2>/dev/null || true)"
+
+  if [[ -n "$RAW_VER_LINE" ]]; then
+    DEPLOY_SCHEMA_VERSION="$(sed -n -E 's/.*[Vv]ersion[[:space:]]+([0-9]+(\.[0-9]+)*).*/\1/p' <<<"$RAW_VER_LINE" | head -n1 || true)"
+  fi
+
+  if [[ -z "$DEPLOY_SCHEMA_VERSION" ]]; then
+    DEPLOY_SCHEMA_VERSION="не удалось определить версию"
+  fi
+
+  # подготовим JSON-строку
+  DEPLOY_SCHEMA_VERSION_ESC="$(json_escape "${DEPLOY_SCHEMA_VERSION}")"
+  DEPLOY_SCHEMA_VERSION_JSON="\"${DEPLOY_SCHEMA_VERSION_ESC}\""
+fi
+
 # ---------- JSON-safe strings ----------
 CPU_MODEL_ESC="$(json_escape "${CPU_MODEL}")"
 OS_VERSION_ESC="$(json_escape "${OS_VERSION}")"
@@ -113,6 +139,8 @@ cat <<EOF
     "google-auth": ${HAS_GOOGLE_AUTH},
     "tc-api-site-details": ${HAS_TC_API_SITE_DETAILS}
   },
-  "users_home": ${USERS_JSON}
+  "users_home": ${USERS_JSON},
+   "deploy_schema_file_exists": $(bool "${DEPLOY_SCHEMA_EXISTS}"),
+   "deploy_schema_version": ${DEPLOY_SCHEMA_VERSION_JSON}
 }
 EOF
