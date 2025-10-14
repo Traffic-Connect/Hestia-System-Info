@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # v-system-info — кастомная команда HestiaCP
 # Возвращает системную сводку в JSON.
-# Version 1.0.1
+# Version 1.0.2
 
 set -euo pipefail
 export LANG=C LC_ALL=C
@@ -112,6 +112,30 @@ if [[ -f "$DEPLOY_SCHEMA_FILE" ]]; then
   DEPLOY_SCHEMA_VERSION_JSON="\"${DEPLOY_SCHEMA_VERSION_ESC}\""
 fi
 
+# ---------- WP Backup installer version ----------
+BACKUP_INSTALL_FILE="/root/backups/install.sh"
+BACKUP_INSTALL_EXISTS=false
+BACKUP_INSTALL_VERSION=""
+BACKUP_INSTALL_VERSION_JSON="null"
+
+if [[ -f "$BACKUP_INSTALL_FILE" ]]; then
+  BACKUP_INSTALL_EXISTS=true
+
+  # Ищем первое вхождение "VERSION: <числа.точки>" (допустимы пробелы, необязателен # и двоеточие)
+  RAW_BK_VER_LINE="$(grep -m1 -E '^[[:space:]]*#?[[:space:]]*VERSION[[:space:]]*:?[[:space:]]*[0-9]+(\.[0-9]+)*' "$BACKUP_INSTALL_FILE" 2>/dev/null || true)"
+
+  if [[ -n "$RAW_BK_VER_LINE" ]]; then
+    BACKUP_INSTALL_VERSION="$(sed -n -E 's/.*VERSION[[:space:]]*:?[[:space:]]*([0-9]+(\.[0-9]+)*).*/\1/p' <<<"$RAW_BK_VER_LINE" | head -n1 || true)"
+  fi
+
+  if [[ -z "$BACKUP_INSTALL_VERSION" ]]; then
+    BACKUP_INSTALL_VERSION="не удалось определить версию"
+  fi
+
+  BACKUP_INSTALL_VERSION_ESC="$(json_escape "${BACKUP_INSTALL_VERSION}")"
+  BACKUP_INSTALL_VERSION_JSON="\"${BACKUP_INSTALL_VERSION_ESC}\""
+fi
+
 # ---------- JSON-safe strings ----------
 CPU_MODEL_ESC="$(json_escape "${CPU_MODEL}")"
 OS_VERSION_ESC="$(json_escape "${OS_VERSION}")"
@@ -141,6 +165,8 @@ cat <<EOF
   },
   "users_home": ${USERS_JSON},
    "deploy_schema_file_exists": $(bool "${DEPLOY_SCHEMA_EXISTS}"),
-   "deploy_schema_version": ${DEPLOY_SCHEMA_VERSION_JSON}
+   "deploy_schema_version": ${DEPLOY_SCHEMA_VERSION_JSON},
+   "backup_install_file_exists": $(bool "${BACKUP_INSTALL_EXISTS}"),
+   "backup_install_version": ${BACKUP_INSTALL_VERSION_JSON}
 }
 EOF
