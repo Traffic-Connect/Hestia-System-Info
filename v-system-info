@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # v-system-info — кастомная команда HestiaCP
 # Возвращает системную сводку в JSON.
-# Version 1.0.2
+# Version 1.0.3
 
 set -euo pipefail
 export LANG=C LC_ALL=C
@@ -136,6 +136,55 @@ if [[ -f "$BACKUP_INSTALL_FILE" ]]; then
   BACKUP_INSTALL_VERSION_JSON="\"${BACKUP_INSTALL_VERSION_ESC}\""
 fi
 
+# ---------- PHP exec / shell_exec availability ----------
+PHP_BIN="$(command -v php 2>/dev/null || true)"
+PHP_EXEC_ENABLED=false
+PHP_SHELL_EXEC_ENABLED=false
+
+if [[ -x "$PHP_BIN" ]]; then
+  # Проверяем, не отключены ли функции в php.ini
+  DISABLED_FUNCS="$($PHP_BIN -r 'echo ini_get("disable_functions");' 2>/dev/null || true)"
+  if [[ -n "$DISABLED_FUNCS" ]]; then
+    if ! grep -qw "exec" <<<"$DISABLED_FUNCS"; then
+      PHP_EXEC_ENABLED=true
+    fi
+    if ! grep -qw "shell_exec" <<<"$DISABLED_FUNCS"; then
+      PHP_SHELL_EXEC_ENABLED=true
+    fi
+  else
+    # Если disable_functions пуст — обе функции доступны
+    PHP_EXEC_ENABLED=true
+    PHP_SHELL_EXEC_ENABLED=true
+  fi
+fi
+
+# ---------- Cron jobs (root only) ----------
+# Собираем задачи в массив
+CRON_TASKS=()
+
+# Получаем crontab для пользователя root
+while IFS= read -r line; do
+    # Пропускаем комментарии и пустые строки
+    if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# && ! "$line" =~ ^[[:space:]]*$ ]]; then
+        line_escaped=$(json_escape "$line")
+        CRON_TASKS+=("\"$line_escaped\"")
+    fi
+done < <(crontab -l -u root 2>/dev/null)
+
+# Формируем JSON массив
+if [[ ${#CRON_TASKS[@]} -gt 0 ]]; then
+    CRON_JOBS_JSON="["
+    for ((i=0; i<${#CRON_TASKS[@]}; i++)); do
+        if [[ $i -gt 0 ]]; then
+            CRON_JOBS_JSON="${CRON_JOBS_JSON},"
+        fi
+        CRON_JOBS_JSON="${CRON_JOBS_JSON}${CRON_TASKS[$i]}"
+    done
+    CRON_JOBS_JSON="${CRON_JOBS_JSON}]"
+else
+    CRON_JOBS_JSON="[]"
+fi
+
 # ---------- JSON-safe strings ----------
 CPU_MODEL_ESC="$(json_escape "${CPU_MODEL}")"
 OS_VERSION_ESC="$(json_escape "${OS_VERSION}")"
@@ -164,9 +213,14 @@ cat <<EOF
     "tc-api-site-details": ${HAS_TC_API_SITE_DETAILS}
   },
   "users_home": ${USERS_JSON},
-   "deploy_schema_file_exists": $(bool "${DEPLOY_SCHEMA_EXISTS}"),
-   "deploy_schema_version": ${DEPLOY_SCHEMA_VERSION_JSON},
-   "backup_install_file_exists": $(bool "${BACKUP_INSTALL_EXISTS}"),
-   "backup_install_version": ${BACKUP_INSTALL_VERSION_JSON}
+  "deploy_schema_file_exists": $(bool "${DEPLOY_SCHEMA_EXISTS}"),
+  "deploy_schema_version": ${DEPLOY_SCHEMA_VERSION_JSON},
+  "backup_install_file_exists": $(bool "${BACKUP_INSTALL_EXISTS}"),
+  "backup_install_version": ${BACKUP_INSTALL_VERSION_JSON},
+  "php_functions": {
+    "exec": $(bool "${PHP_EXEC_ENABLED}"),
+    "shell_exec": $(bool "${PHP_SHELL_EXEC_ENABLED}")
+  },
+  "cron_jobs": ${CRON_JOBS_JSON}
 }
 EOF
