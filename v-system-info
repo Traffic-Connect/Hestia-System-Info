@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # v-system-info — кастомная команда HestiaCP
 # Возвращает системную сводку в JSON.
-# Version 1.0.3
+# Version 1.0.4
 
 set -euo pipefail
 export LANG=C LC_ALL=C
@@ -171,6 +171,19 @@ while IFS= read -r line; do
     fi
 done < <(crontab -l -u root 2>/dev/null)
 
+# ---------- Enforce subdomain ownership ----------
+ENFORCE_SUBDOMAIN_OWNERSHIP_VALUE=""
+
+if [[ -r "$HESTIA_CONF" ]]; then
+  ENFORCE_SUBDOMAIN_OWNERSHIP_VALUE="$(
+    awk -F= '$1=="ENFORCE_SUBDOMAIN_OWNERSHIP"{print $2; exit}' "$HESTIA_CONF" \
+      | tr -d '\r' \
+      | sed -e 's/^ *//; s/ *$//' \
+            -e 's/^"//; s/"$//' \
+            -e "s/^'//; s/'$//"
+  )"
+fi
+
 # Формируем JSON массив
 if [[ ${#CRON_TASKS[@]} -gt 0 ]]; then
     CRON_JOBS_JSON="["
@@ -221,6 +234,7 @@ cat <<EOF
     "exec": $(bool "${PHP_EXEC_ENABLED}"),
     "shell_exec": $(bool "${PHP_SHELL_EXEC_ENABLED}")
   },
-  "cron_jobs": ${CRON_JOBS_JSON}
+  "cron_jobs": ${CRON_JOBS_JSON},
+  "enforce_subdomain_ownership": "$(json_escape "${ENFORCE_SUBDOMAIN_OWNERSHIP_VALUE}")"
 }
 EOF
